@@ -262,7 +262,16 @@ def parse(tokens):
 
     return parsed
 
-def eval_(parsed_template):
+def eval_(parsed_template, data_model=None):
+    """ This is the last step of the engine pipeline. Using the data model, this evaluates the parsed template, producing a flat string.
+
+    >>> data = {"name": "Eva", "age": 23, "apple_count": 5, "friends": ["Billy", "John", "Emily"]}
+    >>> eval_(['Hello ', ('name',), ', what a fine age, ', ('age',), ', to be baking apple pies. You need ', (12, '-', 'apple_count'), ' until you have a round dozen.'], data)
+    'Hello Eva, what a fine age, 23, to be baking apple pies. You need 7 more apples until you have a round dozen.'
+
+    """
+    data_model = {} if data_model is None else data_model
+    
     return str(parsed_template)
 
 
@@ -275,12 +284,10 @@ class Template(object):
         self.parsed_template = None
 
     def render(self, data_model=None):
-        data_model = {} if data_model is None else data_model
         tokenized = tokenize(self.template)
         if self.parsed_template is None:
             self.parsed_template = parse(tokenized)
-        evaluated_template = eval_(self.parsed_template)
-        return evaluated_template
+        return eval_(self.parsed_template, data_model)
 
     def __str__(self):
         return self.render()
