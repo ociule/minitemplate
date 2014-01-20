@@ -262,8 +262,8 @@ def parse(tokens):
 
     return parsed
 
-def eval(parsed_template):
-    return "".join(parsed_template)
+def eval_(parsed_template):
+    return str(parsed_template)
 
 
 class Template(object):
@@ -276,10 +276,10 @@ class Template(object):
 
     def render(self, data_model=None):
         data_model = {} if data_model is None else data_model
-        tokenized = self.tokenize(self.template)
+        tokenized = tokenize(self.template)
         if self.parsed_template is None:
-            self.parsed_template = self.parse(tokenized)
-        evaluated_template = self.eval(self.parsed_template)
+            self.parsed_template = parse(tokenized)
+        evaluated_template = eval_(self.parsed_template)
         return evaluated_template
 
     def __str__(self):
