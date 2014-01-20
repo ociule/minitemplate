@@ -1,3 +1,12 @@
+"""
+This is a toy template engine, inspired by http://pythonpracticeprojects.com/templating-engine.html
+
+The template engine is a compiler, so it has the three classic steps of a compile pipeline:
+ - tokenize
+ - parse
+ - eval
+"""
+
 import re
 
 
@@ -86,11 +95,12 @@ def find_next_endif(tokens, index):
 
 def tokenize(template):
     """Tokenize the text template
+    This is the first step of the template engine.
 
-    The tokenize function uses the TOKEN_REGEX to split a string into a list of substrings containing:
-        * string values
+    The tokenize function uses the TOKEN_REGEX to split the text template into a list of strings containing:
+        * string constants
         * expressions ( "{{ name }}")
-        * statements ( "{% if %}" or "{% for %}" )
+        * statements ( "{% if %}" or "{% for %}" or others )
 
     >>> TOKEN_REGEX.split("You are {% if age >= 18 %}old enough{% else %}not old enough{% endif %}!")
     ['You are ', '{% if age >= 18 %}', 'old enough', '{% else %}', 'not old enough', '{% endif %}', '!']
@@ -141,12 +151,13 @@ def tokenize(template):
 
 def parse(tokens):
     """Parse the tokenized template.
-    Transforms the flat list of tokens into a list-of-trees structure, respecting blocks.
+    Transforms the flat list of tokens into a list-of-trees structure, respecting blocks. 
+    This structure is known in the literature as an AST (abstract syntax tree).
 
     >>> parse([])
     []
 
-    Flat things stay flat, expressions and statements get transformed into a tuple
+    Flat things stay flat. Strings stay strings, expressions and statements get transformed into a tuple
     >>> parse(['Hello there, ', '{{ Name }}', '!'])
     ['Hello there, ', ('Name',), '!']
 
@@ -160,7 +171,7 @@ def parse(tokens):
     >>> parse(['You are ', '{% if age >= 18 %}', 'old enough', '{% else %}', '{% endif %}', '!'])
     ['You are ', ('if', ('age', '>=', 18), 'old enough', ''), '!']
 
-    Loops
+    For loops
     >>> parse(['After, you can call ', '{% for friend in friends %}', '{{friend}}', ',', '{% endfor %}', ' to help us eat.'])
     ['After, you can call ', ('for', ['friend', 'in', 'friends'], [('friend',), ',']), ' to help us eat.']
 
@@ -168,12 +179,12 @@ def parse(tokens):
     >>> parse(['You are ', '{% if age >= 18 %}', 'old enough and you have enough friends: ', '{% for friend in friends %}', '{{friend}}', ',', '{% endfor %}', '{% else %}', 'not old enough', '{% endif %}', '!'])
     ['You are ', ('if', ('age', '>=', 18), ['old enough and you have enough friends: ', ('for', ['friend', 'in', 'friends'], [('friend',), ','])], 'not old enough'), '!']
 
-    @TODO These will fail because the parser sucks and cannot handle an if inside an if (or a for inside a for) yet. See @TODO next_else
+    We can nest statements
     >>> parse(['Condition one ', '{% if age >= 18 %}', "is true, let's see: ", '{% if age >= 65 %}', ' yes you are a senior', '{% else %}', '{% endif %}', '{% else %}', '{% endif %}'])
     ['Condition one ', ('if', ('age', '>=', 18), ["is true, let's see: ", ('if', ('age', '>=', 65), ' yes you are a senior', '')], '')]
     >>> parse(['Condition one ', '{% if age >= 18 %}', "is true, let's loop: ", '{% for friend in friends %}',\
     '{% if friend == "Superman" %}', "wow, Superman, you have powerful friends!", '{% else %}', '{{friend}}', ',', '{% endif %}', '{% endfor %}', '{% else %}', 'not old enough', '{% endif %}', '!'])
-    ['Condition one ', ('if', ('age', '>=', 18), ["is true, let's loop: ", ('for', ['friend', 'in', 'friends'], [('friend',), ','])], 'not old enough'), '!']
+    ['Condition one ', ('if', ('age', '>=', 18), ["is true, let's loop: ", ('for', ['friend', 'in', 'friends'], ('if', ('friend', '==', '"Superman"'), 'wow, Superman, you have powerful friends!', [('friend',), ',']))], 'not old enough'), '!']
 
     Some statements do not open blocks:
     >>> parse(['{% extends base.tmpl %}', 'Hello there!'])
@@ -190,7 +201,7 @@ def parse(tokens):
     def parse_expr(token, tokens, index):
         subtokens = token.split()
         def make_int(token):
-            # @TODO This only processes ints, why not floats ?
+            # @TODO This only processes ints, why not floats and other numerical types ?
             if token.isdigit():
                 token = int(token)
             return token
@@ -217,8 +228,6 @@ def parse(tokens):
             conseq = tokens[index+1:next_else]
             conseq = parse(conseq)
             conseq = unpack_len_one_list(conseq)
-            # @TODO next_endif this is really just the first following endif. If another if is opened after this current if, we're capturing the 2nd's if's endif!
-            # We should count the number of opened if's
             next_endif_ = tokens[index:].index(STATEMENT_START + " endif " + STATEMENT_END)
             next_endif = find_next_endif(tokens, index+1)
             alt = tokens[next_else+1:next_endif]
@@ -258,6 +267,7 @@ def eval(parsed_template):
 
 
 class Template(object):
+    """ This class is the public API of the template engine. """
 
     def __init__(self, file_):
         self.file_ = file_
