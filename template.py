@@ -1,10 +1,11 @@
 """
-This is a toy template engine, inspired by http://pythonpracticeprojects.com/templating-engine.html
+This is a toy template engine, following the specification on http://pythonpracticeprojects.com/templating-engine.html
 
 The template engine is a compiler, so it has the three classic steps of a compile pipeline:
  - tokenize
  - parse
  - eval
+Each step is implemented in a separate function which has the same name as the step.
 """
 
 import re
@@ -22,7 +23,7 @@ def is_expr(token):
 
 def is_stmt(token, type_=None):
     """
-    Is this a token ? If type_ is not None, is it a token of the given type ?
+    Is this a statement ? If type_ is not None, is it a statement of the given type ?
 
     >>> STATEMENT_START = "{%"
     >>> is_stmt("{% if %}", "if")
