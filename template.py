@@ -16,6 +16,13 @@ EXPRESSION_END = "}}"
 STATEMENT_START = "{%"
 STATEMENT_END = "%}"
 TOKEN_REGEX = re.compile(r"(%s.*?%s|%s.*?%s)" % (EXPRESSION_START, EXPRESSION_END, STATEMENT_START, STATEMENT_END))
+_GLOBAL_ENV = {
+    'statements': [
+        'if',
+        'for',
+    ],
+    'variables': {}
+}
 
 
 def is_expr(token):
@@ -23,7 +30,7 @@ def is_expr(token):
 
 def is_stmt(token, type_=None):
     """
-    Is this a statement ? If type_ is not None, is it a statement of the given type ?
+    Is this unparsed token a statement ? If type_ is not None, is it a statement of the given type ?
 
     >>> STATEMENT_START = "{%"
     >>> is_stmt("{% if %}", "if")
@@ -263,6 +270,30 @@ def parse(tokens):
 
     return parsed
 
+
+def is_parsed_token_a_statement(parsed_token):
+    return parsed_token[0] in _GLOBAL_ENV['statements']
+
+def is_parsed_token_an_expression(parsed_token):
+    return not is_parsed_token_a_statement(parsed_token)
+
+def eval_expression(exp, data_model):
+    """
+    >>> data = {"name": "Eva", "age": 23, "apple_count": 5, "friends": ["Billy", "John", "Emily"]}
+    >>> eval_expression(('name',), data)
+    'Eva'
+    >>> eval_expression(('age',), data)
+    23
+    >>> eval_expression((12, '-', 'apple_count',), data)
+    7
+    >>> eval_expression(('age', '>=', 18,), data)
+    True
+    """
+    # First step, replace variables by their values:
+    exp = [data_model[elem] if elem in data_model else elem for elem in exp]
+    
+    return exp[0] if len(exp) == 1 else "".join([str(elem) for elem in exp])
+
 def eval_(parsed_template, data_model=None):
     """ This is the last step of the engine pipeline. Using the data model, this evaluates the parsed template, producing a flat string.
 
@@ -272,8 +303,23 @@ def eval_(parsed_template, data_model=None):
 
     """
     data_model = {} if data_model is None else data_model
+    evaluated = []
+    for elem in parsed_template:
+        if type(elem) == list:
+            evaluated_element = eval_(elem)
+        elif type(elem) == str:
+            evaluated_element = elem
+        elif type(elem) == tuple and is_parsed_token_a_statement(elem):
+            evaluated_element = eval_statement(elem)
+        elif type(elem) == tuple and is_parsed_token_an_expression(elem):
+            evaluated_element = str(eval_expression(elem, data_model))
+        else:
+            raise Exception("Cannot evaluate parsed token, unknown type: %s" % str(elem))
+            
+        evaluated.append(evaluated_element)
+        
     
-    return str(parsed_template)
+    return "".join(evaluated)
 
 
 class Template(object):
