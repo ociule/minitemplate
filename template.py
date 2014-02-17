@@ -337,12 +337,16 @@ def eval_expression(exp, data_model):
     
     return exp[0]
 
-def eval_if_statement(*params):
+def eval_if_statement(*params, **kparams):
     cond = params[0]
     conseq = params[1]
     alt = params[2]
-    cond = eval_expression(cond)
-    return str(cond, params)
+    data_model = {} if 'data_model' not in kparams else kparams['data_model']
+    cond = eval_expression(cond, data_model)
+    if cond:
+        return eval_(conseq, data_model)
+    else:
+        return eval_(alt, data_model)
 
 _GLOBAL_ENV['statements']['if'] = eval_if_statement
 
@@ -373,11 +377,11 @@ def eval_(parsed_template, data_model=None):
 
     Conditionals
     >>> data['age'] = 17
-    >>> eval_(['You are ', ('if', ('age', '>=', 18), 'old enough', 'not old enough'), '!'])
-    'You are not old enough!'])
+    >>> eval_(['You are ', ('if', ('age', '>=', 18), 'old enough', 'not old enough'), '!'], data)
+    'You are not old enough!'
     >>> data['age'] = 23
-    >>> eval_(['You are ', ('if', ('age', '>=', 18), 'old enough', ''), '!'])
-    'You are old enough!'])
+    >>> eval_(['You are ', ('if', ('age', '>=', 18), 'old enough', ''), '!'], data)
+    'You are old enough!'
 
     For loops
     >>> parse(['After, you can call ', '{% for friend in friends %}', '{{friend}}', ',', '{% endfor %}', ' to help us eat.'])
