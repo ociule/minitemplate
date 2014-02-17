@@ -9,6 +9,7 @@ Each step is implemented in a separate function which has the same name as the s
 """
 
 import re
+import math 
 
 
 EXPRESSION_START = "{{"
@@ -17,11 +18,30 @@ STATEMENT_START = "{%"
 STATEMENT_END = "%}"
 TOKEN_REGEX = re.compile(r"(%s.*?%s|%s.*?%s)" % (EXPRESSION_START, EXPRESSION_END, STATEMENT_START, STATEMENT_END))
 _GLOBAL_ENV = {
-    'statements': [
-        'if',
-        'for',
-    ],
-    'variables': {}
+    'statements': {
+        'len': lambda x, data_model: len(x),
+    },
+    'variables': {},
+    'operators': {
+        'binary': {
+            '+': lambda x, y: x+y,
+            '-': lambda x, y: x-y,
+            '*': lambda x, y: x*y,
+            '/': lambda x, y: float(x)/y,
+            '/': lambda x, y: x % y,
+            '>': lambda x, y: x > y,
+            '<': lambda x, y: x < y,
+            '>=': lambda x, y: x >= y,
+            '<=': lambda x, y: x <= y,
+            '==': lambda x, y: x == y,
+            '!=': lambda x, y: x != y,
+            '^': math.pow,
+            'in': lambda x, y: x in y,
+        },
+        'unary': {
+            '-': lambda x: -x,
+        },
+    },
 }
 
 
@@ -279,6 +299,8 @@ def is_parsed_token_an_expression(parsed_token):
 
 def eval_expression(exp, data_model):
     """
+    For the purpose of simplicity, we won't handle nested expressions. Only simple bunary and unary expressions.
+    Writing a nested exp evaluator is out-of-scope for now.
     >>> data = {"name": "Eva", "age": 23, "apple_count": 5, "friends": ["Billy", "John", "Emily"]}
     >>> eval_expression(('name',), data)
     'Eva'
@@ -286,31 +308,106 @@ def eval_expression(exp, data_model):
     23
     >>> eval_expression((12, '-', 'apple_count',), data)
     7
+    >>> eval_expression(('Hello ', '+', 'name',), data)
+    'Hello Eva'
+    >>> eval_expression((3, '^', 2,), data)
+    9.0
     >>> eval_expression(('age', '>=', 18,), data)
     True
     """
     # First step, replace variables by their values:
     exp = [data_model[elem] if elem in data_model else elem for elem in exp]
+    if len(exp) == 3:
+        # Binary operation
+        left_hand = exp[0]
+        op = exp[1]
+        right_hand = exp[2]
+        if op not in _GLOBAL_ENV['operators']['binary']:
+            raise ValueError("Unknown binary operator: %s" % op)
+        op = _GLOBAL_ENV['operators']['binary'][op]
+        exp = [op(left_hand, right_hand)]
+    elif len(exp) == 2:
+        # Unary operation
+        op = exp[0]
+        right_hand = exp[1]
+        if op not in _GLOBAL_ENV['operators']['unary']:
+            raise ValueError("Unknown unary operator: %s" % op)
+        op = _GLOBAL_ENV['operators']['binary'][op]
+        exp = [op(right_hand)]
     
-    return exp[0] if len(exp) == 1 else "".join([str(elem) for elem in exp])
+    return exp[0]
+
+def eval_if_statement(*params):
+    cond = params[0]
+    conseq = params[1]
+    alt = params[2]
+    cond = eval_expression(cond)
+    return str(cond, params)
+
+_GLOBAL_ENV['statements']['if'] = eval_if_statement
+
+def eval_statement(stmt, data_model):
+    """
+    For the purpose of simplicity, we won't handle nested expressions. Only simple bunary and unary expressions.
+    Writing a nested exp evaluator is out-of-scope for now.
+    >>> data = {"age": 23, "friends": ["Billy", "John", "Emily"]}
+    >>> eval_statement(('len', 'friends'), data)
+    3
+    """
+    # First step, replace variables by their values:
+    stmt = [data_model[elem] if elem in data_model else elem for elem in stmt]
+    procedure = _GLOBAL_ENV['statements'][stmt[0]]
+
+    return procedure(*stmt[1:], data_model=data_model)
 
 def eval_(parsed_template, data_model=None):
     """ This is the last step of the engine pipeline. Using the data model, this evaluates the parsed template, producing a flat string.
 
+    >>> eval_([])
+    ''
+
+    Calculations and variables
     >>> data = {"name": "Eva", "age": 23, "apple_count": 5, "friends": ["Billy", "John", "Emily"]}
-    >>> eval_(['Hello ', ('name',), ', what a fine age, ', ('age',), ', to be baking apple pies. You need ', (12, '-', 'apple_count'), ' until you have a round dozen.'], data)
+    >>> eval_(['Hello ', ('name',), ', what a fine age, ', ('age',), ', to be baking apple pies. You need ', (12, '-', 'apple_count'), ' more apples until you have a round dozen.'], data)
     'Hello Eva, what a fine age, 23, to be baking apple pies. You need 7 more apples until you have a round dozen.'
+
+    Conditionals
+    >>> data['age'] = 17
+    >>> eval_(['You are ', ('if', ('age', '>=', 18), 'old enough', 'not old enough'), '!'])
+    'You are not old enough!'])
+    >>> data['age'] = 23
+    >>> eval_(['You are ', ('if', ('age', '>=', 18), 'old enough', ''), '!'])
+    'You are old enough!'])
+
+    For loops
+    >>> parse(['After, you can call ', '{% for friend in friends %}', '{{friend}}', ',', '{% endfor %}', ' to help us eat.'])
+    ['After, you can call ', ('for', ['friend', 'in', 'friends'], [('friend',), ',']), ' to help us eat.']
+
+    Some statements open blocks that can contain expressions or statements
+    >>> parse(['You are ', '{% if age >= 18 %}', 'old enough and you have enough friends: ', '{% for friend in friends %}', '{{friend}}', ',', '{% endfor %}', '{% else %}', 'not old enough', '{% endif %}', '!'])
+    ['You are ', ('if', ('age', '>=', 18), ['old enough and you have enough friends: ', ('for', ['friend', 'in', 'friends'], [('friend',), ','])], 'not old enough'), '!']
+
+    We can nest statements
+    >>> parse(['Condition one ', '{% if age >= 18 %}', "is true, let's see: ", '{% if age >= 65 %}', ' yes you are a senior', '{% else %}', '{% endif %}', '{% else %}', '{% endif %}'])
+    ['Condition one ', ('if', ('age', '>=', 18), ["is true, let's see: ", ('if', ('age', '>=', 65), ' yes you are a senior', '')], '')]
+    >>> parse(['Condition one ', '{% if age >= 18 %}', "is true, let's loop: ", '{% for friend in friends %}',\
+    '{% if friend == "Superman" %}', "wow, Superman, you have powerful friends!", '{% else %}', '{{friend}}', ',', '{% endif %}', '{% endfor %}', '{% else %}', 'not old enough', '{% endif %}', '!'])
+    ['Condition one ', ('if', ('age', '>=', 18), ["is true, let's loop: ", ('for', ['friend', 'in', 'friends'], ('if', ('friend', '==', '"Superman"'), 'wow, Superman, you have powerful friends!', [('friend',), ',']))], 'not old enough'), '!']
+
+    Some statements do not open blocks:
+    >>> parse(['{% extends base.tmpl %}', 'Hello there!'])
+    [('extends', ('base.tmpl',)), 'Hello there!']
 
     """
     data_model = {} if data_model is None else data_model
     evaluated = []
     for elem in parsed_template:
         if type(elem) == list:
-            evaluated_element = eval_(elem)
-        elif type(elem) == str:
+            evaluated_element = eval_(elem, data_model)
+        elif type(elem) == str or type(elem) == int:
             evaluated_element = elem
         elif type(elem) == tuple and is_parsed_token_a_statement(elem):
-            evaluated_element = eval_statement(elem)
+            evaluated_element = eval_statement(elem, data_model)
         elif type(elem) == tuple and is_parsed_token_an_expression(elem):
             evaluated_element = str(eval_expression(elem, data_model))
         else:
