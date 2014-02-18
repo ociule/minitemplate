@@ -384,8 +384,8 @@ def eval_(parsed_template, data_model=None):
     'You are old enough!'
 
     For loops
-    >>> parse(['After, you can call ', '{% for friend in friends %}', '{{friend}}', ',', '{% endfor %}', ' to help us eat.'])
-    ['After, you can call ', ('for', ['friend', 'in', 'friends'], [('friend',), ',']), ' to help us eat.']
+    >>> eval_(['After, you can call ', ('for', ['friend', 'in', 'friends'], [('friend',), ',']), ' to help us eat.'], data)
+    'After, you can call Billy, John, Emily, to help us eat.'
 
     Some statements open blocks that can contain expressions or statements
     >>> parse(['You are ', '{% if age >= 18 %}', 'old enough and you have enough friends: ', '{% for friend in friends %}', '{{friend}}', ',', '{% endfor %}', '{% else %}', 'not old enough', '{% endif %}', '!'])
