@@ -391,7 +391,6 @@ def eval_statement(stmt, data_model):
     # First step, replace variables by their values:
     stmt = [data_model[elem] if type(elem) != list and elem in data_model else elem for elem in stmt]
     procedure = _GLOBAL_ENV['statements'][stmt[0]]
-
     return procedure(*stmt[1:], data_model=data_model)
 
 def eval_(parsed_template, data_model=None):
@@ -400,8 +399,9 @@ def eval_(parsed_template, data_model=None):
     >>> eval_([])
     ''
 
-    Calculations and variables
     >>> data = {"name": "Eva", "age": 23, "apple_count": 5, "friends": ["Billy", "John", "Emily"]}
+
+    Calculations and variables
     >>> eval_(['Hello ', ('name',), ', what a fine age, ', ('age',), ', to be baking apple pies. You need ', (12, '-', 'apple_count'), ' more apples until you have a round dozen.'], data)
     'Hello Eva, what a fine age, 23, to be baking apple pies. You need 7 more apples until you have a round dozen.'
 
@@ -426,11 +426,12 @@ def eval_(parsed_template, data_model=None):
     'You are old enough and you have enough friends: Billy, John, Emily, !'
 
     We can nest statements
-    >>> parse(['Condition one ', '{% if age >= 18 %}', "is true, let's see: ", '{% if age >= 65 %}', ' yes you are a senior', '{% else %}', '{% endif %}', '{% else %}', '{% endif %}'])
-    ['Condition one ', ('if', ('age', '>=', 18), ["is true, let's see: ", ('if', ('age', '>=', 65), ' yes you are a senior', '')], '')]
-    >>> parse(['Condition one ', '{% if age >= 18 %}', "is true, let's loop: ", '{% for friend in friends %}',\
-    '{% if friend == "Superman" %}', "wow, Superman, you have powerful friends!", '{% else %}', '{{friend}}', ',', '{% endif %}', '{% endfor %}', '{% else %}', 'not old enough', '{% endif %}', '!'])
-    ['Condition one ', ('if', ('age', '>=', 18), ["is true, let's loop: ", ('for', ['friend', 'in', 'friends'], ('if', ('friend', '==', '"Superman"'), 'wow, Superman, you have powerful friends!', [('friend',), ',']))], 'not old enough'), '!']
+    >>> data['age'] = 66
+    >>> eval_(['Condition one ', ('if', ('age', '>=', 18), ["is true, let's see:", ('if', ('age', '>=', 65), ' yes you are a senior', '')], '')], data)
+    "Condition one is true, let's see: yes you are a senior"
+    >>> data['friends'] = ['Batman', 'Superman']
+    >>> eval_(['Condition one ', ('if', ('age', '>=', 18), ["is true, let's loop: ", ('for', ['friend', 'in', 'friends'], [('if', ('friend', '==', 'Superman'), 'wow, Superman, you have powerful friends!', [('friend',), ', '])])], 'not old enough'), ''], data)
+    "Condition one is true, let's loop: Batman, wow, Superman, you have powerful friends!"
 
     Some statements do not open blocks:
     >>> eval_([('extends', ('base.tmpl',)), 'Hello there!'])
