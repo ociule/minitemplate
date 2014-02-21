@@ -350,6 +350,36 @@ def eval_if_statement(*params, **kparams):
 
 _GLOBAL_ENV['statements']['if'] = eval_if_statement
 
+def eval_for_statement(*params, **kparams):
+    for_ = params[0]
+    if len(for_) != 3 or for_[1] != 'in':
+        raise ValueError("Unknown for clause: %s " % str(for_))
+    loop = params[1]
+    data_model = {} if 'data_model' not in kparams else kparams['data_model']
+    result = []
+    elem_name = for_[0]
+    elem_name_present_in_data_model = elem_name in data_model
+    if elem_name_present_in_data_model:
+        old_elem_in_data_model = data_model[elem_name]
+    for elem in data_model[for_[2]]:
+        data_model[elem_name] = elem
+        result.append(eval_(loop, data_model))
+    if elem_name_present_in_data_model:
+        data_model[elem_name] = old_elem_in_data_model
+    else:
+        del data_model[elem_name]
+        
+    return ''.join(result)
+
+_GLOBAL_ENV['statements']['for'] = eval_for_statement
+
+def eval_extends_statement(*params, **kparams):
+    parent = params[0]
+    data_model = {} if 'data_model' not in kparams else kparams['data_model']
+    return ""
+
+_GLOBAL_ENV['statements']['extends'] = eval_extends_statement
+
 def eval_statement(stmt, data_model):
     """
     For the purpose of simplicity, we won't handle nested expressions. Only simple bunary and unary expressions.
@@ -359,7 +389,7 @@ def eval_statement(stmt, data_model):
     3
     """
     # First step, replace variables by their values:
-    stmt = [data_model[elem] if elem in data_model else elem for elem in stmt]
+    stmt = [data_model[elem] if type(elem) != list and elem in data_model else elem for elem in stmt]
     procedure = _GLOBAL_ENV['statements'][stmt[0]]
 
     return procedure(*stmt[1:], data_model=data_model)
@@ -380,16 +410,20 @@ def eval_(parsed_template, data_model=None):
     >>> eval_(['You are ', ('if', ('age', '>=', 18), 'old enough', 'not old enough'), '!'], data)
     'You are not old enough!'
     >>> data['age'] = 23
-    >>> eval_(['You are ', ('if', ('age', '>=', 18), 'old enough', ''), '!'], data)
-    'You are old enough!'
+    >>> eval_(['You are ', ('if', ('age', '>=', 18), ['old enough, ', ('name',)], ''), '!'], data)
+    'You are old enough, Eva!'
 
     For loops
-    >>> eval_(['After, you can call ', ('for', ['friend', 'in', 'friends'], [('friend',), ',']), ' to help us eat.'], data)
+    >>> eval_(['After, you can call ', ('for', ('friend', 'in', 'friends'), [('friend',), ', ']), 'to help us eat.'], data)
     'After, you can call Billy, John, Emily, to help us eat.'
+    >>> eval_(['After, you can call ', ('for', ['friend', 'within', 'friends'], [('friend',), ',']), ' to help us eat.'], data)
+    Traceback (most recent call last):
+      ...
+    ValueError: Unknown for clause: ['friend', 'within', 'friends'] 
 
     Some statements open blocks that can contain expressions or statements
-    >>> parse(['You are ', '{% if age >= 18 %}', 'old enough and you have enough friends: ', '{% for friend in friends %}', '{{friend}}', ',', '{% endfor %}', '{% else %}', 'not old enough', '{% endif %}', '!'])
-    ['You are ', ('if', ('age', '>=', 18), ['old enough and you have enough friends: ', ('for', ['friend', 'in', 'friends'], [('friend',), ','])], 'not old enough'), '!']
+    >>> eval_(['You are ', ('if', ('age', '>=', 18), ['old enough and you have enough friends: ', ('for', ['friend', 'in', 'friends'], [('friend',), ', '])], 'not old enough'), '!'], data)
+    'You are old enough and you have enough friends: Billy, John, Emily, !'
 
     We can nest statements
     >>> parse(['Condition one ', '{% if age >= 18 %}', "is true, let's see: ", '{% if age >= 65 %}', ' yes you are a senior', '{% else %}', '{% endif %}', '{% else %}', '{% endif %}'])
@@ -399,8 +433,8 @@ def eval_(parsed_template, data_model=None):
     ['Condition one ', ('if', ('age', '>=', 18), ["is true, let's loop: ", ('for', ['friend', 'in', 'friends'], ('if', ('friend', '==', '"Superman"'), 'wow, Superman, you have powerful friends!', [('friend',), ',']))], 'not old enough'), '!']
 
     Some statements do not open blocks:
-    >>> parse(['{% extends base.tmpl %}', 'Hello there!'])
-    [('extends', ('base.tmpl',)), 'Hello there!']
+    >>> eval_([('extends', ('base.tmpl',)), 'Hello there!'])
+    'Hello there!'
 
     """
     data_model = {} if data_model is None else data_model
