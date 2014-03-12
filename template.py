@@ -164,6 +164,10 @@ def tokenize(template):
     >>> tokenize('You are {% if age >= 18 %}old enough and you have enough friends: {% for friend in friends %}{{friend}},{% endfor %}\
 {% else %}not old enough{% endif %}!')
     ['You are ', '{% if age >= 18 %}', 'old enough and you have enough friends: ', '{% for friend in friends %}', '{{friend}}', ',', '{% endfor %}', '{% else %}', 'not old enough', '{% endif %}', '!']
+    
+    Blocks
+    >>> tokenize("{% block greeting %}Hello there, {{ Name }}!{% endblock %}")
+    ['{% block greeting %}', 'Hello there, ', '{{ Name }}', '!', '{% endblock %}']
     """
 
     if len(template) == 0:
@@ -206,6 +210,10 @@ def parse(tokens):
     Some statements open blocks that can contain expressions or statements
     >>> parse(['You are ', '{% if age >= 18 %}', 'old enough and you have enough friends: ', '{% for friend in friends %}', '{{friend}}', ',', '{% endfor %}', '{% else %}', 'not old enough', '{% endif %}', '!'])
     ['You are ', ('if', ('age', '>=', 18), ['old enough and you have enough friends: ', ('for', ['friend', 'in', 'friends'], [('friend',), ','])], 'not old enough'), '!']
+    >>> parse(['{% block greeting %}', 'Hello there,', '{{ name }}', '!', '{% endblock %}'])
+    [('block', 'greeting', ['Hello there,', ('name',), '!'])]
+    >>> parse(['{% block greeting %}', '{% if position == "here" %}', 'Hello there,', '{{ name }}', '!', '{% else %}', '', '{% endif %}', '{% endblock %}'])
+    [('block', 'greeting', ('if', ('position', '==', '"here"'), ['Hello there,', ('name',), '!'], ''))]
 
     We can nest statements
     >>> parse(['Condition one ', '{% if age >= 18 %}', "is true, let's see: ", '{% if age >= 65 %}', ' yes you are a senior', '{% else %}', '{% endif %}', '{% else %}', '{% endif %}'])
@@ -214,9 +222,9 @@ def parse(tokens):
     '{% if friend == "Superman" %}', "wow, Superman, you have powerful friends!", '{% else %}', '{{friend}}', ',', '{% endif %}', '{% endfor %}', '{% else %}', 'not old enough', '{% endif %}', '!'])
     ['Condition one ', ('if', ('age', '>=', 18), ["is true, let's loop: ", ('for', ['friend', 'in', 'friends'], ('if', ('friend', '==', '"Superman"'), 'wow, Superman, you have powerful friends!', [('friend',), ',']))], 'not old enough'), '!']
 
-    Some statements do not open blocks:
-    >>> parse(['{% extends base.tmpl %}', 'Hello there!'])
-    [('extends', ('base.tmpl',)), 'Hello there!']
+    Some statements do not open blocks, like extends:
+    >>> parse(['{% extends base.tmpl %}', '{% block greeting %}', 'Hello there!', '{% endblock %}'])
+    [('extends', ('base.tmpl',)), ('block', 'greeting', 'Hello there!')]
 
     """
     # Let's go from tokenized (flat list of tokens) to AST
@@ -256,7 +264,6 @@ def parse(tokens):
             conseq = tokens[index+1:next_else]
             conseq = parse(conseq)
             conseq = unpack_len_one_list(conseq)
-            next_endif_ = tokens[index:].index(STATEMENT_START + " endif " + STATEMENT_END)
             next_endif = find_next_endif(tokens, index+1)
             alt = tokens[next_else+1:next_endif]
             alt = parse(alt)
@@ -270,6 +277,14 @@ def parse(tokens):
             conseq = unpack_len_one_list(conseq)
             index += next_endfor
             return index, tuple([statement, params, conseq])
+        elif statement == "block":
+            next_endblock = tokens[index:].index(STATEMENT_START + " endblock " + STATEMENT_END)
+            block_content = tokens[index+1:index+next_endblock]
+            block_content = parse(block_content)
+            block_content = unpack_len_one_list(block_content)
+            params = unpack_len_one_list(params)
+            index += next_endblock
+            return index, tuple([statement, params, block_content])
         return index, tuple([statement, tuple(params)])
 
     index = 0
