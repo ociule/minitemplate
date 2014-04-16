@@ -42,6 +42,8 @@ _GLOBAL_ENV = {
             '-': lambda x: -x,
         },
     },
+    'blocks': {
+    },
 }
 
 
@@ -223,6 +225,7 @@ def parse(tokens):
     ['Condition one ', ('if', ('age', '>=', 18), ["is true, let's loop: ", ('for', ['friend', 'in', 'friends'], ('if', ('friend', '==', '"Superman"'), 'wow, Superman, you have powerful friends!', [('friend',), ',']))], 'not old enough'), '!']
 
     Some statements do not open blocks, like extends:
+    @TODO: BREAKTHROUGH parsing extends should return the parent template plus an end_parent marker that will be used to flatten the blocks (only keep latest)
     >>> parse(['{% extends base.tmpl %}', '{% block greeting %}', 'Hello there!', '{% endblock %}'])
     [('extends', ('base.tmpl',)), ('block', 'greeting', 'Hello there!')]
 
@@ -389,16 +392,30 @@ def eval_for_statement(*params, **kparams):
 _GLOBAL_ENV['statements']['for'] = eval_for_statement
 
 def eval_extends_statement(*params, **kparams):
-    parent = params[0]
+    """
+    @TODO throw exception if extends is not the first statement in the template
+    """
+    parent = params[0][0]
+    parent_template = Template(open(parent, 'r')).parse()
+    print parent_template
     data_model = {} if 'data_model' not in kparams else kparams['data_model']
     return ""
 
 _GLOBAL_ENV['statements']['extends'] = eval_extends_statement
 
+def eval_block_statement(*params, **kparams):
+    block_name = params[0]
+    block_content = params[1]
+    data_model = {} if 'data_model' not in kparams else kparams['data_model']
+    global_blocks = _GLOBAL_ENV['blocks']
+    if block_name not in global_blocks:
+        global_blocks[block_name] = block_content
+    return eval_(block_content, data_model)
+
+_GLOBAL_ENV['statements']['block'] = eval_block_statement
+
 def eval_statement(stmt, data_model):
     """
-    For the purpose of simplicity, we won't handle nested expressions. Only simple bunary and unary expressions.
-    Writing a nested exp evaluator is out-of-scope for now.
     >>> data = {"age": 23, "friends": ["Billy", "John", "Emily"]}
     >>> eval_statement(('len', 'friends'), data)
     3
@@ -448,8 +465,13 @@ def eval_(parsed_template, data_model=None):
     >>> eval_(['Condition one ', ('if', ('age', '>=', 18), ["is true, let's loop: ", ('for', ['friend', 'in', 'friends'], [('if', ('friend', '==', 'Superman'), 'wow, Superman, you have powerful friends!', [('friend',), ', '])])], 'not old enough'), ''], data)
     "Condition one is true, let's loop: Batman, wow, Superman, you have powerful friends!"
 
-    Some statements do not open blocks:
-    >>> eval_([('extends', ('base.tmpl',)), 'Hello there!'])
+    >>> eval_([('block', 'greeting', 'Hello there!')])
+    'Hello there!'
+
+    The "extends" statement loads a parent template:
+    >>> eval_([('extends', ('base.tmpl',))])
+    'Hello all!'
+    >>> eval_([('extends', ('base.tmpl',)), ('block', 'greeting', 'Hello there!')])
     'Hello there!'
 
     """
@@ -469,7 +491,6 @@ def eval_(parsed_template, data_model=None):
             
         evaluated.append(evaluated_element)
         
-    
     return "".join(evaluated)
 
 
@@ -481,9 +502,15 @@ class Template(object):
         self.template = file_.read()
         self.parsed_template = None
 
-    def render(self, data_model=None):
-        tokenized = tokenize(self.template)
+    def parse(self):
         if self.parsed_template is None:
+            tokenized = tokenize(self.template)
+            self.parsed_template = parse(tokenized)
+        return self.parsed_template 
+
+    def render(self, data_model=None):
+        if self.parsed_template is None:
+            tokenized = tokenize(self.template)
             self.parsed_template = parse(tokenized)
         return eval_(self.parsed_template, data_model)
 
